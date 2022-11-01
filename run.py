@@ -78,7 +78,7 @@ def submit_form():
         return redirect(request.referrer)
 
     else:
-        return "Something wentsss wrong."
+        return "Something went wrong."
 
 
 if __name__ == "__main__":
