@@ -14,7 +14,6 @@ app = Flask(__name__)
 
 # TODO: hide this secret key using vault
 app.secret_key = os.getenv("APP_SECRET")
-print(app.secret_key)
 
 def file_to_db(data):
     """Takes the response from form completion and files it to a CSV for tracking"""
