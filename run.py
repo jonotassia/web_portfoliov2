@@ -1,32 +1,51 @@
 import os
-import csv
+from dotenv import load_dotenv
 from smtplib import SMTPException
 from flask import Flask, request, render_template, redirect
 from flask_mail import Mail, Message
-from flask_executor import Executor
+# from flask_executor import Executor # - removed for Python Anywhere
+import mysql.connector
 import hvac   # https://hvac.readthedocs.io/en/stable/overview.html
 
+
+load_dotenv()
 app = Flask(__name__)
-executor = Executor(app)  # Initialise the executor object for asynchronous sending of email
+# executor = Executor(app)  # Initialise the executor object for asynchronous sending of email - removed for Python Anywhere
 
 # TODO: hide this secret key using vault
-secret_key = os.urandom(12).hex()
-app.secret_key = secret_key
+app.secret_key = os.getenv("APP_SECRET")
+print(app.secret_key)
 
-
-def file_to_csv(data):
+def file_to_db(data):
     """Takes the response from form completion and files it to a CSV for tracking"""
-    with open("database.csv", "a", newline="") as database:
-        name = data["name"]
-        email = data["email"]
-        subject = data["subject"]
-        message = data["message"]
+    mydb = mysql.connector.connect(
+        host=os.getenv("DB_HOST"),
+        user=os.getenv("DB_USER"),
+        password=os.getenv("DB_PASS")
+    )
 
-        csv_write = csv.writer(database)
-        csv_write.writerow([name, email, subject, message])
+    print(mydb)
+
+    mycursor = mydb.cursor()
+
+    if "form_data" not in mycursor.execute("SHOW TABLES"):
+        mycursor.execute("CREATE TABLE form_data (name VARCHAR(255), email VARCHAR(255), subject VARCHAR(255), message VARCHAR(255)")
+
+    name = data["name"]
+    email = data["email"]
+    subject = data["subject"]
+    message = data["message"]
+
+    sql = "INSERT INTO form_data (name, email, subject, message) VALUES (%s, %s, %s, %s)"
+    val = (name, email, subject, message)
+
+    mycursor.execute(sql, val)
+    mydb.commit()
+
+    print(mycursor.lastrowid)
 
 
-@executor.job  # Mail sent asynchronously using Flask-Executor library
+# @executor.job  # Mail sent asynchronously using Flask-Executor library - removed for Python Anywhere
 def form_to_mail(data, app):
     """Takes the response from form completion and sends it to email.
     Credentials for email auth pulled via API to Hashicorp Vault."""
@@ -72,8 +91,9 @@ def submit_form():
     and sends an email notification via the form_to_mail func"""
     if request.method == "POST":
         response = request.form.to_dict()
-        file_to_csv(response)
-        form_to_mail.submit(response, app)    # Submit using asynchronous queue from Flask-Executor
+        # file_to_db(response)                  # Hide when not on Python Anywhere
+        form_to_mail(response, app)             # Use this for Python Anywhere as it does not support asynch queues
+        # form_to_mail.submit(response, app)    # Submit using asynchronous queue from Flask-Executor
 
         return redirect(request.referrer)
 
