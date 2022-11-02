@@ -1,11 +1,12 @@
 import os
+import sys
 from dotenv import load_dotenv
 from smtplib import SMTPException
 from flask import Flask, request, render_template, redirect
 from flask_mail import Mail, Message
 # from flask_executor import Executor # - removed for Python Anywhere
 import mysql.connector
-import hvac   # https://hvac.readthedocs.io/en/stable/overview.html
+# import hvac   # https://hvac.readthedocs.io/en/stable/overview.html
 
 
 load_dotenv()
@@ -17,18 +18,18 @@ app.secret_key = os.getenv("APP_SECRET")
 
 def file_to_db(data):
     """Takes the response from form completion and files it to a CSV for tracking"""
-    mydb = mysql.connector.connect(
-        host=os.getenv("DB_HOST"),
-        user=os.getenv("DB_USER"),
-        password=os.getenv("DB_PASS")
-    )
+    try:
+        mydb = mysql.connector.connect(
+            host=os.getenv("DB_HOST"),
+            user=os.getenv("DB_USER"),
+            password=os.getenv("DB_PASS"),
+        )
+    except mysql.connector.Error as err:
+        sys.stderr.write(err)
+        return err
 
-    print(mydb)
-
+    mydb.database = "jonotassia$default"
     mycursor = mydb.cursor()
-
-    if "form_data" not in mycursor.execute("SHOW TABLES"):
-        mycursor.execute("CREATE TABLE form_data (name VARCHAR(255), email VARCHAR(255), subject VARCHAR(255), message VARCHAR(255)")
 
     name = data["name"]
     email = data["email"]
@@ -90,7 +91,7 @@ def submit_form():
     and sends an email notification via the form_to_mail func"""
     if request.method == "POST":
         response = request.form.to_dict()
-        # file_to_db(response)                  # Hide when not on Python Anywhere
+        file_to_db(response)                  # Hide when not on Python Anywhere
         form_to_mail(response, app)             # Use this for Python Anywhere as it does not support asynch queues
         # form_to_mail.submit(response, app)    # Submit using asynchronous queue from Flask-Executor
 
@@ -106,4 +107,3 @@ if __name__ == "__main__":
 
 # TODO: Update facts section with current numbers
 # TODO: Update portfolio with list of works
-# TODO: Redeploy on github
