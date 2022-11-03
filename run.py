@@ -1,28 +1,29 @@
-import os
 import sys
-from dotenv import load_dotenv
+import boto3
 from smtplib import SMTPException
 from flask import Flask, request, render_template, redirect
 from flask_mail import Mail, Message
 # from flask_executor import Executor # - removed for Python Anywhere
 import mysql.connector
-# import hvac   # https://hvac.readthedocs.io/en/stable/overview.html
 
 
-load_dotenv()
+# Initiate AWS SSM integration for secrets storage
+ssm = boto3.client('ssm')
+
+# Initialize Flask app and pull secret key from AWS
 app = Flask(__name__)
+app.secret_key = ssm.get_parameter(Name="FOLIO_APP_SECRET", WithDecryption=True)['Parameter']['Value']
+
 # executor = Executor(app)  # Initialise the executor object for asynchronous sending of email - removed for Python Anywhere
 
-# TODO: hide this secret key using vault
-app.secret_key = os.getenv("APP_SECRET")
 
-def file_to_db(data):
+def file_to_db(data, ssm):
     """Takes the response from form completion and files it to a CSV for tracking"""
     try:
         mydb = mysql.connector.connect(
-            host=os.getenv("DB_HOST"),
-            user=os.getenv("DB_USER"),
-            password=os.getenv("DB_PASS"),
+            host=ssm.get_parameter(Name="FOLIO_DB_HOST")['Parameter']['Value'],
+            user=ssm.get_parameter(Name="FOLIO_DB_USER")['Parameter']['Value'],
+            password=ssm.get_parameter(Name="FOLIO_DB_PASS", WithDecryption=True)['Parameter']['Value'],
         )
     except mysql.connector.Error as err:
         sys.stderr.write(err)
@@ -46,7 +47,7 @@ def file_to_db(data):
 
 
 # @executor.job  # Mail sent asynchronously using Flask-Executor library - removed for Python Anywhere
-def form_to_mail(data, app):
+def form_to_mail(data, app, ssm):
     """Takes the response from form completion and sends it to email.
     Credentials for email auth pulled via API to Hashicorp Vault."""
     name = data["name"]
@@ -56,15 +57,15 @@ def form_to_mail(data, app):
 
     app.config['MAIL_SERVER'] = 'smtp.gmail.com'
     app.config['MAIL_PORT'] = 587
-    # TODO: Deploy vault with AWS to feed credentials into login below and mail_to address
-    app.config['MAIL_USERNAME'] = os.getenv('MAIL_USERNAME')
-    app.config['MAIL_PASSWORD'] = os.getenv('MAIL_PASSWORD')
+    app.config['MAIL_USERNAME'] = ssm.get_parameter(Name="FOLIO_MAIL_USERNAME")['Parameter']['Value']
+    app.config['MAIL_PASSWORD'] = ssm.get_parameter(Name="FOLIO_MAIL_PASSWORD", WithDecryption=True)['Parameter']['Value']
     app.config['MAIL_USE_TLS'] = True
     app.config['MAIL_USE_SSL'] = False
 
     mail = Mail(app)
+    recipients = ssm.get_parameter(Name="FOLIO_MAIL_TO_EMAIL")['Parameter']['Value']
 
-    msg = Message(subject=f"{name}: {subject}", recipients=[os.getenv('MAIL_TO_EMAIL')], sender=app.config['MAIL_USERNAME'])
+    msg = Message(subject=f"{name}: {subject}", recipients=[recipients], sender=app.config['MAIL_USERNAME'])
     msg.body = f"From: {email_address}\n\n{message}"
 
     try:
@@ -91,9 +92,10 @@ def submit_form():
     and sends an email notification via the form_to_mail func"""
     if request.method == "POST":
         response = request.form.to_dict()
-        file_to_db(response)                  # Hide when not on Python Anywhere
-        form_to_mail(response, app)             # Use this for Python Anywhere as it does not support asynch queues
-        # form_to_mail.submit(response, app)    # Submit using asynchronous queue from Flask-Executor
+
+        file_to_db(response, ssm)                  # Hide when not on Python Anywhere
+        form_to_mail(response, app, ssm)             # Use this for Python Anywhere as it does not support asynch queues
+        # form_to_mail.submit(response, app, ssm)    # Submit using asynchronous queue from Flask-Executor
 
         return redirect(request.referrer)
 
@@ -101,8 +103,8 @@ def submit_form():
         return "Something went wrong."
 
 
-# if __name__ == "__main__":
-#     app.run(host='0.0.0.0', port=5000, debug=True)
+if __name__ == "__main__":
+    app.run(host='0.0.0.0', port=5000, debug=True)
 
 
 # TODO: Update facts section with current numbers
