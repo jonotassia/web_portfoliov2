@@ -83,7 +83,7 @@ def web_page(page_name):
 @app.route("/")
 def index():
     """Defines route for websites home page"""
-    return render_template("/index.html")
+    return render_template("index.html")
 
 
 @app.route("/submit", methods=["POST", "GET"])
@@ -106,3 +106,4 @@ def submit_form():
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=5000, debug=True)
 
+# TODO: Add portfolio information to each portfolio item
