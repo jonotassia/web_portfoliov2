@@ -18,7 +18,11 @@ app.secret_key = ssm.get_parameter(Name="FOLIO_APP_SECRET", WithDecryption=True)
 
 
 def file_to_db(data, ssm):
-    """Takes the response from form completion and files it to a CSV for tracking"""
+    """
+    Takes the response from form completion and files it to a CSV for tracking
+    :param data: Data from the contact form.
+    :param ssm: Boto3 API to query AWS SSM for secrets.
+    """
     try:
         mydb = mysql.connector.connect(
             host=ssm.get_parameter(Name="FOLIO_DB_HOST")['Parameter']['Value'],
@@ -48,8 +52,13 @@ def file_to_db(data, ssm):
 
 # @executor.job  # Mail sent asynchronously using Flask-Executor library - removed for Python Anywhere
 def form_to_mail(data, app, ssm):
-    """Takes the response from form completion and sends it to email.
-    Credentials for email auth pulled via API to Hashicorp Vault."""
+    """
+    Takes the response from form completion and sends it to email.
+    Credentials for email auth pulled via API to AWS SSM.
+    :param data: Data from the contact form.
+    :param app: Flask app for use with FlaskMail
+    :param ssm: Boto3 API to query AWS SSM for secrets.
+    """
     name = data["name"]
     email_address = data["email"]
     subject = data["subject"]
@@ -88,8 +97,10 @@ def index():
 
 @app.route("/submit", methods=["POST", "GET"])
 def submit_form():
-    """This route is triggered upon clicking submit form (method = POST)
-    and sends an email notification via the form_to_mail func"""
+    """
+    This route is triggered upon clicking submit form (method = POST)
+    and sends an email notification via the form_to_mail func
+    """
     if request.method == "POST":
         response = request.form.to_dict()
 
